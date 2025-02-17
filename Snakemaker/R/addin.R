@@ -50,7 +50,7 @@ rule [rulename]:
     output: ...
     log: logs/{rulename}.log
     shell: ...
-Provide ONLY the Snakemake rule based on the given command, no additional text, no comments (e.g. markdown), etc.
+Provide ONLY the Snakemake rule based on the given command, no additional text, no comments (e.g. markdown), NO ``` before and after the rule.
 
 ")
         )
