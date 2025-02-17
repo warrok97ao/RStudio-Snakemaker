@@ -1,0 +1,4 @@
+Name: Snakemaker
+Description: Create Snakemake rule from input line(s)
+Binding: my_addin
+Interactive: true

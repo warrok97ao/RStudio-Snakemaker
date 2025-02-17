@@ -1,0 +1,16 @@
+Package: Snakemaker
+Type: Package
+Title: Create Snakemake rule from input line(s)
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Alessandro", "Leone",
+      email = "alessandro.leone@unito.it",
+      role = c("aut", "cre")
+    )
+  )
+Description: The addin uses LLM to generate snakemake rules using as input line(s) from either R or Bash history.
+Encoding: UTF-8
+LazyData: true
+
+
