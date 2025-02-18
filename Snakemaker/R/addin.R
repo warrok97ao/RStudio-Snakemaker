@@ -1,4 +1,12 @@
 my_addin <- function() {
+  library(shiny)
+library(callr)
+library(later)
+library(rstudioapi)
+library(httr)
+library(jsonlite)
+library(bslib)
+  
   get_api_key <- function(model) {
     api_key <- Sys.getenv(model)
     if (api_key == "") {
