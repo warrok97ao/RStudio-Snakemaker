@@ -1,11 +1,11 @@
 my_addin <- function() {
-  suppressPackageStartupMessages(library(shiny))
-library(callr)
-library(later)
-library(rstudioapi)
-library(httr)
-library(jsonlite)
-library(bslib)
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(callr))
+suppressPackageStartupMessages(library(later))
+suppressPackageStartupMessages(library(rstudioapi))
+suppressPackageStartupMessages(library(httr))
+suppressPackageStartupMessages(library(jsonlite))
+suppressPackageStartupMessages(library(bslib))
   
   get_api_key <- function(model) {
     api_key <- Sys.getenv(model)
