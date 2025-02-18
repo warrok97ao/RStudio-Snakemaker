@@ -108,8 +108,10 @@ server <- function(input, output, session) {
     selected_line_raw <- if (input$menu_choice == "history")
       input$selected_line else input$selected_term
     selected_line <- if (is.null(selected_line_raw)) "" else paste(selected_line_raw, collapse = "\n")
+    source_flag <- if (input$menu_choice == "history") "R history" else "Terminal history"
     if (length(selected_line) > 0L && selected_line != "") {
       writeLines(selected_line, con = "selected_line.txt")
+      writeLines(source_flag, con = "source_flag.txt")
       current_archived_rules <- archived_rules()
       if (!selected_line %in% current_archived_rules) {
         archived_rules(c(current_archived_rules, selected_line))
@@ -136,11 +138,6 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$close, {
-    # Remove all .txt files in the current directory
-    txt_files <- list.files(pattern = "\\.txt$", full.names = TRUE)
-    if (length(txt_files) > 0) {
-      file.remove(txt_files)
-    }
     stopApp()
   })
 
