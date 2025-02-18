@@ -23,4 +23,3 @@ shinyApp(
   ),
   server = server
 )
-
