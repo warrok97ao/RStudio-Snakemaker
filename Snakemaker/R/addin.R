@@ -1,5 +1,5 @@
 my_addin <- function() {
-  library(shiny)
+  suppressPackageStartupMessages(library(shiny))
 library(callr)
 library(later)
 library(rstudioapi)
