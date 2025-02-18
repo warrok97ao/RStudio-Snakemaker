@@ -41,24 +41,23 @@ suppressPackageStartupMessages(library(bslib))
         list(
           role = "system",
           content = paste0("
-I have the following command line from ", source_flag, ".
-Convert this command into a valid Snakemake rule. Your output must include only the Snakemake rule definition and no additional text, comments, or explanations. Follow these guidelines:
+Convert the following command into a valid Snakemake rule.
+Automatically deduce whether the command is written in R or Bash.
+Follow these guidelines:
 
-1. Deduce the input and output filenames from the command. If inputs or outputs are unavailable, use - for none or Unknown if uncertain.
-2. Generate rule name based on the command.
-3. If possible, use wildcards in inputs/outputs where appropriate.
-4. Include a log directive in the rule (e.g., log: logs/{rule}.log) if the rule processes files or if wildcards are present.
-5. Preserve any newlines present in the command, adjusting only if necessary for rule readability.
-6. Ensure that your entire output consists solely of the Snakemake rule.
-
+1. Deduce input and output filenames from the command. If unavailable, use '-' for none or 'Unknown' if uncertain.
+2. Generate a rule name based on the command.
+3. Where appropriate, use wildcards in inputs/outputs.
+4. Include a log directive (e.g., log: logs/{rule}.log) if files are processed or wildcards are present.
+5. Preserve any newlines in the command for readability.
+6. Return only the Snakemake rule with no extra text.
 Example of acceptable output:
 rule [rulename]:
     input: ...
     output: ...
     log: logs/{rulename}.log
     shell: ...
-
-Provide ONLY the Snakemake rule based on the given command, no additional text, no comments, etc.
+Provide ONLY the Snakemake rule based on the given command, no additional text, no comments (e.g. markdown), NO ``` before and after the rule.
 ")
         )
       )
