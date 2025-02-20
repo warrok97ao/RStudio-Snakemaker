@@ -12,5 +12,15 @@ Authors@R: c(
 Description: The addin uses LLM to generate snakemake rules using as input line(s) from either R or Bash history.
 Encoding: UTF-8
 LazyData: true
+Imports:
+    shiny,
+    shinyjs,
+    httr,
+    jsonlite,
+    rstudioapi,
+    callr,
+    later,
+    bslib
+RoxygenNote: 7.3.2
 
 
