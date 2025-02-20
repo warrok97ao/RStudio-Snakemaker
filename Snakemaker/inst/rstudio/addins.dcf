@@ -1,4 +1,9 @@
+Name: Chat with LLM
+Description: Launch the Chat LLM Addin.
+Binding: chat_llm_addin
+Interactive: true
+
 Name: Snakemaker
-Description: Create Snakemake rule from input line(s)
+Description: Launch the Snakemaker Addin.
 Binding: my_addin
 Interactive: true
