@@ -31,14 +31,218 @@ server <- function(input, output, session) {
     }
   })
   
-  # Update the select inputs based on the current history, excluding archived rules
+  # Add reactive values to store importance classification
+  r_history_importance <- reactiveVal(list())
+  bash_history_importance <- reactiveVal(list())
+
+  # Function to classify a line as important or not using the LLM
+  classify_line_importance <- function(line, model = NULL) {
+    if (is.null(model)) {
+      model <- if (file.exists("selected_model.txt")) {
+        readLines("selected_model.txt", warn = FALSE)
+      } else {
+        "llama3-8b-8192"
+      }
+    }
+    prompt <- paste0(
+      "I have the following history line: ", line, 
+      ", you need to classify it as important or not, usually important commands have input and output or modify files. Only answer 'important' or 'not important'."
+    )
+    # Use the same LLM call as in addin.R (assume generate_rule or similar is available)
+    # For simplicity, use a local function here (user should adapt as needed)
+    api_key <- tryCatch(keyring::key_get(service = paste0("Snakemaker_", model), username = Sys.info()[["user"]]), error = function(e) "")
+    url <- if (model == "nvidia/llama-3.1-nemotron-70b-instruct") {
+      "https://integrate.api.nvidia.com/v1/chat/completions"
+    } else {
+      "https://api.groq.com/openai/v1/chat/completions"
+    }
+    body <- list(
+      model = model,
+      messages = list(list(role = "user", content = prompt))
+    )
+    resp <- tryCatch({
+      httr::POST(
+        url,
+        httr::add_headers(`Content-Type` = "application/json", Authorization = paste("Bearer", api_key)),
+        encode = "json",
+        body = body
+      )
+    }, error = function(e) NULL)
+    if (is.null(resp)) return("not important")
+    parsed <- tryCatch(jsonlite::fromJSON(httr::content(resp, as = "text"), simplifyVector = FALSE), error = function(e) NULL)
+    if (is.null(parsed) || is.null(parsed$choices) || length(parsed$choices) == 0) return("not important")
+    answer <- tolower(trimws(parsed$choices[[1]]$message$content))
+    if (grepl("important", answer) && !grepl("not", answer)) {
+      "important"
+    } else {
+      "not important"
+    }
+  }
+
+  # Helper to update importance for new lines
+  update_importance <- function(history, importance_map, set_importance) {
+    lines <- history()
+    imp_map <- importance_map()
+    new_lines <- setdiff(lines, names(imp_map))
+    if (length(new_lines) > 0) {
+      for (line in new_lines) {
+        imp <- classify_line_importance(line)
+        imp_map[[line]] <- imp
+      }
+      set_importance(imp_map)
+    }
+  }
+
+  # On history update, classify new lines
+  observe({
+    update_importance(current_r_history, r_history_importance, r_history_importance)
+    update_importance(current_bash_history, bash_history_importance, bash_history_importance)
+  })
+
+  # Helper to toggle importance
+  toggle_importance <- function(line, importance_map, set_importance) {
+    imp_map <- importance_map()
+    current <- imp_map[[line]]
+    imp_map[[line]] <- if (!is.null(current) && current == "important") "not important" else "important"
+    set_importance(imp_map)
+  }
+
+  # Render R history with clickable symbols
+  output$r_history_ui <- renderUI({
+    lines <- setdiff(current_r_history(), archived_rules())
+    imp_map <- r_history_importance()
+    lapply(seq_along(lines), function(i) {
+      line <- lines[i]
+      sym <- if (!is.null(imp_map[[line]]) && imp_map[[line]] == "important") "★" else "⭘"
+      div(
+        style = "display:flex; align-items:center; margin-bottom:2px;",
+        actionLink(
+          inputId = paste0("toggle_r_", i),
+          label = sym,
+          style = "font-size:18px; margin-right:6px;"
+        ),
+        span(line)
+      )
+    })
+  })
+
+  # Render Bash history with clickable symbols
+  output$bash_history_ui <- renderUI({
+    lines <- setdiff(current_bash_history(), archived_rules())
+    imp_map <- bash_history_importance()
+    lapply(seq_along(lines), function(i) {
+      line <- lines[i]
+      sym <- if (!is.null(imp_map[[line]]) && imp_map[[line]] == "important") "★" else "⭘"
+      div(
+        style = "display:flex; align-items:center; margin-bottom:2px;",
+        actionLink(
+          inputId = paste0("toggle_bash_", i),
+          label = sym,
+          style = "font-size:18px; margin-right:6px;"
+        ),
+        span(line)
+      )
+    })
+  })
+
+  # Render clickable importance buttons for R history
+  output$r_history_buttons <- renderUI({
+    lines <- setdiff(current_r_history(), archived_rules())
+    imp_map <- r_history_importance()
+    tagList(
+      lapply(seq_along(lines), function(i) {
+        line <- lines[i]
+        sym <- if (!is.null(imp_map[[line]]) && imp_map[[line]] == "important") "★" else "⭘"
+        actionButton(
+          inputId = paste0("toggle_r_", i),
+          label = sym,
+          style = "padding:0 6px; font-size:14px; margin-right:4px; min-width:24px; height:24px;",
+          title = if (sym == "★") "Mark as not important" else "Mark as important"
+        )
+      })
+    )
+  })
+
+  # Render clickable importance buttons for Bash history
+  output$bash_history_buttons <- renderUI({
+    lines <- setdiff(current_bash_history(), archived_rules())
+    imp_map <- bash_history_importance()
+    tagList(
+      lapply(seq_along(lines), function(i) {
+        line <- lines[i]
+        sym <- if (!is.null(imp_map[[line]]) && imp_map[[line]] == "important") "★" else "⭘"
+        actionButton(
+          inputId = paste0("toggle_bash_", i),
+          label = sym,
+          style = "padding:0 6px; font-size:14px; margin-right:4px; min-width:24px; height:24px;",
+          title = if (sym == "★") "Mark as not important" else "Mark as important"
+        )
+      })
+    )
+  })
+
+  # Observe clicks for R history importance buttons
+  observe({
+    lines <- setdiff(current_r_history(), archived_rules())
+    for (i in seq_along(lines)) {
+      local({
+        idx <- i
+        line <- lines[idx]
+        observeEvent(input[[paste0("toggle_r_", idx)]], {
+          toggle_importance(line, r_history_importance, r_history_importance)
+        }, ignoreInit = TRUE)
+      })
+    }
+  })
+
+  # Observe clicks for Bash history importance buttons
+  observe({
+    lines <- setdiff(current_bash_history(), archived_rules())
+    for (i in seq_along(lines)) {
+      local({
+        idx <- i
+        line <- lines[idx]
+        observeEvent(input[[paste0("toggle_bash_", idx)]], {
+          toggle_importance(line, bash_history_importance, bash_history_importance)
+        }, ignoreInit = TRUE)
+      })
+    }
+  })
+
+  # Update the select inputs based on the current history, excluding archived rules, and add symbol
   observe({
     filtered_r_history <- setdiff(current_r_history(), archived_rules())
     filtered_bash_history <- setdiff(current_bash_history(), archived_rules())
-    updateSelectInput(session, "selected_line", choices = filtered_r_history)
-    updateSelectInput(session, "selected_term", choices = filtered_bash_history)
+    imp_r <- r_history_importance()
+    imp_b <- bash_history_importance()
+    symbolize <- function(line, imp_map) {
+      sym <- if (!is.null(imp_map[[line]]) && imp_map[[line]] == "important") "★" else "⭘"
+      paste0(sym, " ", line)
+    }
+    r_choices <- setNames(filtered_r_history, vapply(filtered_r_history, symbolize, character(1), imp_map = imp_r))
+    b_choices <- setNames(filtered_bash_history, vapply(filtered_bash_history, symbolize, character(1), imp_map = imp_b))
+
+    # For archived rules, try to find the symbol from either R or Bash importance maps
+    archived <- archived_rules()
+    archived_choices <- setNames(
+      archived,
+      vapply(archived, function(line) {
+        sym <- if (!is.null(imp_r[[line]])) {
+          if (imp_r[[line]] == "important") "★" else "⭘"
+        } else if (!is.null(imp_b[[line]])) {
+          if (imp_b[[line]] == "important") "★" else "⭘"
+        } else {
+          "⭘"
+        }
+        paste0(sym, " ", line)
+      }, character(1))
+    )
+
+    updateSelectInput(session, "selected_line", choices = r_choices)
+    updateSelectInput(session, "selected_term", choices = b_choices)
+    updateSelectInput(session, "archived_rules_select", choices = archived_choices)
   })
-  
+
   observeEvent(input$open_settings, {
     selected_model <- if (file.exists("selected_model.txt")) {
       readLines("selected_model.txt", warn = FALSE)
@@ -145,6 +349,26 @@ server <- function(input, output, session) {
       writeLines(selected_rule, con = "selected_line.txt")
       source_flag <- readLines("source_flag.txt", warn = FALSE)
       showNotification(paste("Command taken from:", source_flag), duration = 2)
+    }
+  })
+
+  observeEvent(input$toggle_importance_btn, {
+    if (input$menu_choice == "history") {
+      selected <- input$selected_line
+      imp_map <- r_history_importance()
+      for (line in selected) {
+        current <- imp_map[[line]]
+        imp_map[[line]] <- if (!is.null(current) && current == "important") "not important" else "important"
+      }
+      r_history_importance(imp_map)
+    } else if (input$menu_choice == "term_history") {
+      selected <- input$selected_term
+      imp_map <- bash_history_importance()
+      for (line in selected) {
+        current <- imp_map[[line]]
+        imp_map[[line]] <- if (!is.null(current) && current == "important") "not important" else "important"
+      }
+      bash_history_importance(imp_map)
     }
   })
 

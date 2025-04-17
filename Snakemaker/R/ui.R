@@ -186,20 +186,33 @@ create_ui = function(history, term_history, archived_rules, selected_model) {
         div(class = "select-input",
             conditionalPanel(
               condition = "input.menu_choice == 'history'",
-              selectInput("selected_line", "Select a line:",
-                          choices = history,
-                          selectize = FALSE,
-                          multiple = TRUE,
-                          size = 5,
-                          width = "100%")
+              tagList(
+                selectInput("selected_line", "Select a line:",
+                            choices = history,
+                            selectize = FALSE,
+                            multiple = TRUE,
+                            size = 5,
+                            width = "100%"),
+                # Make the button small and inline with others
+                div(
+                  style = "display: flex; gap: 10px; margin-bottom: 8px;",
+                  actionButton("toggle_importance_btn", NULL, icon = icon("star"), class = "btn btn-secondary btn-sm", style = "height:32px; width:32px;", title = "Toggle Importance")
+                )
+              )
             ),
             conditionalPanel(
               condition = "input.menu_choice == 'term_history'",
-              selectInput("selected_term", "Select a line:",
-                          choices = term_history,
-                          selectize = FALSE,
-                          size = 5,
-                          width = "100%")
+              tagList(
+                selectInput("selected_term", "Select a line:",
+                            choices = term_history,
+                            selectize = FALSE,
+                            size = 5,
+                            width = "100%"),
+                div(
+                  style = "display: flex; gap: 10px; margin-bottom: 8px;",
+                  actionButton("toggle_importance_btn", NULL, icon = icon("star"), class = "btn btn-secondary btn-sm", style = "height:32px; width:32px;", title = "Toggle Importance")
+                )
+              )
             )
         ),
         div(class = "action-buttons",
@@ -210,6 +223,7 @@ create_ui = function(history, term_history, archived_rules, selected_model) {
         hr(),
         h4("Archived Rules"),
         div(class = "archived-rules",
+            # The choices for archived_rules_select will be updated from the server with symbols
             selectInput("archived_rules_select", "Select an archived rule:",
                         choices = archived_rules,
                         selectize = FALSE,
