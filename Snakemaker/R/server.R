@@ -75,10 +75,10 @@ server <- function(input, output, session) {
   observeEvent(input$change_key_options, {
     showModal(modalDialog(
       title = "Change API Key",
-      "This will delete the currently stored API key for the selected model. The addin will restart immediately and next time you generate a rule, you will be prompted for a new key.",
+      "This will delete the currently stored API key for the selected model. You will be prompted for a new key the next time you generate a rule.",
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("confirm_change_key_options", "Confirm")
+        actionButton("confirm_change_key_options", "Confirm", class = "btn btn-danger")
       ),
       class = "modal-content"
     ))
@@ -86,15 +86,13 @@ server <- function(input, output, session) {
 
   observeEvent(input$confirm_change_key_options, {
     model_key <- isolate(input$selected_model_options)
-    Sys.unsetenv(model_key)
-    flag_file <- paste0("delete_api_key_", model_key, ".txt")
-    writeLines("delete", flag_file)
+    service <- paste0("Snakemaker_", model_key)
+    # Remove any logic that writes files or calls stopApp()
+    try({
+      keyring::key_delete(service = service, username = Sys.info()[["user"]])
+    }, silent = TRUE)
+    showNotification("API key deleted from keyring. You will be prompted for a new key when needed.", duration = 2)
     removeModal()
-    writeLines("restart", "restart_flag.txt")
-    stopApp()
-    later::later(function() {
-      my_addin()
-    }, delay = 0.1)
   })
 
   observeEvent(input$save_model_options, {

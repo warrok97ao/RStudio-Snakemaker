@@ -6,15 +6,16 @@ suppressPackageStartupMessages(library(rstudioapi))
 suppressPackageStartupMessages(library(httr))
 suppressPackageStartupMessages(library(jsonlite))
 suppressPackageStartupMessages(library(bslib))
-  
+suppressPackageStartupMessages(library(keyring))
+library(keyring)
+
   get_api_key <- function(model) {
-    api_key <- Sys.getenv(model)
-    if (api_key == "") {
+    service <- paste0("Snakemaker_", model)
+    api_key <- tryCatch(key_get(service = service, username = Sys.info()[["user"]]), error = function(e) "")
+    if (identical(api_key, "")) {
       api_key <- rstudioapi::askForPassword(paste("Enter your API key for", model))
       if (!is.null(api_key) && api_key != "") {
-        env_var <- list()
-        env_var[[model]] <- api_key
-        do.call(Sys.setenv, env_var)
+        key_set_with_value(service = service, username = Sys.info()[["user"]], password = api_key)
       } else stop(paste("API key for", model, "is required."))
     }
     api_key
@@ -196,14 +197,6 @@ Provide ONLY the Snakemake rule based on the given command, no additional text, 
       file.remove(flag_file)
     }
 
-    if (file.exists("restart_flag.txt")) {
-      file.remove("restart_flag.txt")
-      later::later(function() {
-        my_addin()
-      }, delay = 1)
-      return()
-    }
-
     if (file.exists("selected_line.txt")) {
       selected_line_lines <- readLines("selected_line.txt")
       writeLines("", "selected_line.txt")
@@ -230,6 +223,28 @@ Provide ONLY the Snakemake rule based on the given command, no additional text, 
 
     later::later(recursive_check, interval)
   }
+
+  observeEvent(input$change_key_options, {
+    showModal(modalDialog(
+      title = "Change API Key",
+      "This will delete the currently stored API key for the selected model. You will be prompted for a new key the next time it is needed.",
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_change_key_options", "Confirm", class = "btn btn-danger")
+      )
+    ))
+  })
+
+  observeEvent(input$confirm_change_key_options, {
+    model_key <- isolate(input$selected_model_options)
+    service <- paste0("Snakemaker_", model_key)
+    try({
+      key_delete(service = service, username = Sys.info()[["user"]])
+    }, silent = TRUE)
+    showNotification("API key deleted from keyring. You will be prompted for a new key when needed.", duration = 2)
+    removeModal()
+    # Do NOT call stopApp(), quit(), or restart here
+  })
 
   recursive_check()
 }

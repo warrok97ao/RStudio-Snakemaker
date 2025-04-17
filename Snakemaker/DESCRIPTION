@@ -20,7 +20,8 @@ Imports:
     rstudioapi,
     callr,
     later,
-    bslib
+    bslib,
+    keyring
 RoxygenNote: 7.3.2
 
 

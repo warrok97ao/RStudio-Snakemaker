@@ -2,13 +2,16 @@ library(shiny)
 library(httr)
 library(jsonlite)
 library(rstudioapi)
+library(keyring)
 
 get_api_key <- function(model) {
-  api_key <- Sys.getenv(model)
-  if (api_key == "") {
+  service <- paste0("Snakemaker_", model)
+  # Try to get the key from keyring
+  api_key <- tryCatch(key_get(service = service, username = Sys.info()[["user"]]), error = function(e) "")
+  if (identical(api_key, "")) {
     api_key <- rstudioapi::askForPassword(paste("Enter your API key for", model))
     if (is.null(api_key) || nchar(api_key) == 0) stop("API key is required.")
-    Sys.setenv(model = api_key)
+    key_set_with_value(service = service, username = Sys.info()[["user"]], password = api_key)
   }
   api_key
 }
@@ -148,29 +151,25 @@ chat_llm_addin <- function() {
     observeEvent(input$change_key_options, {
       showModal(modalDialog(
         title = "Change API Key",
-        "This will delete the currently stored API key for the selected model. The addin will restart immediately and next time you generate a rule, you will be prompted for a new key.",
+        textInput("new_api_key", "Enter new API key:", value = "", width = "100%"),
         footer = tagList(
           modalButton("Cancel"),
-          actionButton("confirm_change_key_options", "Confirm", class = "btn btn-danger")
+          actionButton("confirm_change_key_options", "Save", class = "btn btn-primary")
         )
       ))
     })
 
     observeEvent(input$confirm_change_key_options, {
       model_key <- isolate(input$selected_model_options)
-      Sys.unsetenv(model_key)
-      flag_file <- paste0("delete_api_key_", model_key, ".txt")
-      writeLines("delete", flag_file)
-      removeModal()
-      writeLines("restart", "restart_flag.txt")
-      stopApp()
-    })
-
-    observeEvent(input$save_model_options, {
-      selected_model <- isolate(input$selected_model_options)
-      writeLines(selected_model, "selected_model.txt")
-      showNotification("Model selection saved.", duration = 2)
-      removeModal()
+      new_key <- isolate(input$new_api_key)
+      if (is.null(new_key) || nchar(new_key) == 0) {
+        showNotification("API key cannot be empty.", type = "error")
+      } else {
+        service <- paste0("Snakemaker_", model_key)
+        key_set_with_value(service = service, username = Sys.info()[["user"]], password = new_key)
+        showNotification("API key updated in keyring.", duration = 2)
+        removeModal()
+      }
     })
 
     observeEvent(input$new_chat, {
