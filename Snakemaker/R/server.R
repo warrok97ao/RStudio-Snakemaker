@@ -487,10 +487,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$show_doc, {
+    # Try to get the active document context, but show a clear error if not running in main R session
     activeDocContext <- tryCatch(
       expr = rstudioapi::getActiveDocumentContext(),
       error = function(e) {
-        showNotification("Failed to retrieve active document context.", type = "error", duration = 5)
+        showNotification("Failed to retrieve active document context. This feature only works if the addin is launched in the main R session (not in a background process).", type = "error", duration = 6)
         return(NULL)
       }
     )
@@ -623,11 +624,15 @@ server <- function(input, output, session) {
     }
   })
 
+  # At the top of the server function, read initial history for UI initialization
+  initial_r_history <- if (file.exists("r_history.txt")) readLines("r_history.txt") else character()
+  initial_bash_history <- if (file.exists("bash_history.txt")) readLines("bash_history.txt") else character()
+
   output$main_or_chat_ui <- renderUI({
     if (isTRUE(show_chat())) {
       create_chat_ui()
     } else {
-      # ...existing main UI code...
+      # Use initial history for selectInput choices at launch
       fluidPage(
         div(class = "radio-buttons",
             radioButtons("menu_choice", "Choose Menu:",
@@ -638,7 +643,7 @@ server <- function(input, output, session) {
               condition = "input.menu_choice == 'history'",
               tagList(
                 selectInput("selected_line", "Select a line:",
-                            choices = character(0),
+                            choices = initial_r_history,
                             selectize = FALSE,
                             multiple = TRUE,
                             size = 5,
@@ -649,14 +654,13 @@ server <- function(input, output, session) {
               condition = "input.menu_choice == 'term_history'",
               tagList(
                 selectInput("selected_term", "Select a line:",
-                            choices = character(0),
+                            choices = initial_bash_history,
                             selectize = FALSE,
                             size = 5,
                             width = "100%")
               )
             )
         ),
-        # Importance button now inline with other action buttons
         div(class = "action-buttons",
             actionButton("insert", span(icon("file-import"), " Generate rule"), class = "btn btn-primary"),
             actionButton("refresh", span(icon("sync"), " Update History"), class = "btn btn-warning"),
