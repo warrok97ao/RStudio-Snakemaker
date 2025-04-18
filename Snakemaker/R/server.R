@@ -265,6 +265,15 @@ server <- function(input, output, session) {
                               class = "btn btn-info",
                               style = "width:100%")
           )
+        ),
+        fluidRow(
+          column(12,
+                 div(style = "margin-top:18px;",
+                     actionButton("toggle_theme_settings", 
+                                  HTML("<span>&#9790;</span> Dark Mode"), 
+                                  class = "btn btn-secondary", 
+                                  style = "width:100%;"))
+          )
         )
       ),
       easyClose = TRUE,
@@ -273,6 +282,13 @@ server <- function(input, output, session) {
         actionButton("save_model_options", "Save", class = "btn btn-primary")
       ),
       class = "modal-content"
+    ))
+  })
+
+  # Add observeEvent for the new dark mode button in settings
+  observeEvent(input$toggle_theme_settings, {
+    session$sendCustomMessage(type = "jsCode", list(
+      code = "$('body').toggleClass('dark-mode'); var btn = $('#toggle_theme_settings'); if ($('body').hasClass('dark-mode')) { btn.html('<span>&#9788;</span> Light Mode'); } else { btn.html('<span>&#9790;</span> Dark Mode'); }"
     ))
   })
 
@@ -375,6 +391,291 @@ server <- function(input, output, session) {
   output$archived_rules_output <- renderText({
     paste(archived_rules(), collapse = "\n")
   })
+
+  show_chat <- reactiveVal(FALSE)
+
+  observeEvent(input$open_chat, { show_chat(TRUE) })
+  observeEvent(input$close_chat, { show_chat(FALSE) })
+
+  # Chat state and logic (full-featured, as in chat_llm_addin.R)
+  chatData <- reactiveValues(
+    current = list(),
+    sessions = list(),
+    document_context = ""
+  )
+
+  observeEvent(input$new_chat, {
+    if (length(chatData$current) > 0) {
+      chatData$sessions[[length(chatData$sessions) + 1]] <- chatData$current
+    }
+    chatData$current <- list()
+  })
+
+  observeEvent(input$send, {
+    req(input$user_message)
+    old_messages <- chatData$current
+    history_text <- if (length(old_messages) > 0) {
+      paste(sapply(old_messages, function(msg) {
+        if (msg$sender == "user") paste("User:", msg$text) else paste("LLM:", msg$text)
+      }), collapse = "\n")
+    } else {
+      ""
+    }
+    selected_model <- if (file.exists("selected_model.txt")) {
+      readLines("selected_model.txt", warn = FALSE)
+    } else {
+      "llama3-8b-8192"
+    }
+    docContext <- ""
+    if (nchar(chatData$document_context) > 0) {
+      docContext <- paste("Document context:", chatData$document_context)
+    }
+    prompt <- paste(
+      "You are an expert in bioinfomratics analysis. We are in the context of RStudio, so the question could be related to R. This is our previous conversation, use it as context for the next response. If there is no previous conversation do not mention it. Prefer shorter, more concise responses, and do not preface your answer with any context.",
+      docContext,
+      history_text,
+      "User:",
+      input$user_message,
+      sep = "\n"
+    )
+    userMsg <- list(sender = "user", text = input$user_message)
+    chatData$current <- append(old_messages, list(userMsg))
+    updateTextInput(session, "user_message", value = "")
+    response <- tryCatch({
+      api_key <- tryCatch(keyring::key_get(service = paste0("Snakemaker_", selected_model), username = Sys.info()[["user"]]), error = function(e) "")
+      url <- if (selected_model == "nvidia/llama-3.1-nemotron-70b-instruct") {
+        "https://integrate.api.nvidia.com/v1/chat/completions"
+      } else {
+        "https://api.groq.com/openai/v1/chat/completions"
+      }
+      body <- list(
+        model = selected_model,
+        messages = list(list(role = "user", content = prompt))
+      )
+      resp <- httr::POST(
+        url,
+        httr::add_headers(`Content-Type` = "application/json", Authorization = paste("Bearer", api_key)),
+        encode = "json",
+        body = body
+      )
+      parsed <- jsonlite::fromJSON(httr::content(resp, as = "text"), simplifyVector = FALSE)
+      if (!is.null(parsed$error)) stop(parsed$error$message)
+      parsed$choices[[1]]$message$content
+    }, error = function(e) paste("Error:", e$message))
+    llmMsg <- list(sender = "llm", text = response)
+    chatData$current <- append(chatData$current, list(llmMsg))
+  })
+
+  output$chat_output <- renderUI({
+    tags$div(
+      style = "display:flex; flex-direction:column; gap:10px;",
+      lapply(chatData$current, function(msg) {
+        align <- if (msg$sender == "user") "flex-end" else "flex-start"
+        msg_class <- if (msg$sender == "user") "chat-message user" else "chat-message llm"
+        processedText <- if (msg$sender == "llm") {
+          HTML(commonmark::markdown_html(enc2utf8(as.character(msg$text))))
+        } else {
+          msg$text
+        }
+        tags$div(
+          class = msg_class,
+          style = paste("align-self:", align, ";"),
+          processedText
+        )
+      })
+    )
+  })
+
+  observeEvent(input$show_doc, {
+    activeDocContext <- tryCatch(
+      expr = rstudioapi::getActiveDocumentContext(),
+      error = function(e) {
+        showNotification("Failed to retrieve active document context.", type = "error", duration = 5)
+        return(NULL)
+      }
+    )
+    if (is.null(activeDocContext)) return()
+    activeDoc <- tryCatch(
+      expr = activeDocContext$contents,
+      error = function(e) {
+        showNotification("Failed to access document contents.", type = "error", duration = 5)
+        return(NULL)
+      }
+    )
+    if (is.null(activeDoc)) return()
+    activeDoc <- paste(activeDoc, collapse = "\n")
+    maxChars <- 20000
+    if (nchar(activeDoc) > maxChars) {
+      activeDoc <- paste0(substr(activeDoc, 1, maxChars), "\n...\n(Content truncated)")
+    }
+    chatData$document_context <- activeDoc
+    session$sendCustomMessage("updateButtonStyle",
+                              list(buttonId = "show_doc", style = "background-color: #ffcccc;"))
+    showNotification("Active document set as context", duration = 2)
+  })
+
+  observeEvent(input$show_history, {
+    if (length(chatData$sessions) == 0) {
+      showNotification("No chat history available.", type = "error", duration = 3)
+      return()
+    }
+    sessionChoices <- setNames(seq_along(chatData$sessions),
+                               paste("Chat Session", seq_along(chatData$sessions)))
+    showModal(modalDialog(
+      title = "Select a Chat Session",
+      selectInput("selected_history_session", "Chat History:", choices = sessionChoices),
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("load_history_session", "Load Chat", class = "btn btn-primary")
+      )
+    ))
+  })
+
+  observeEvent(input$load_history_session, {
+    req(input$selected_history_session)
+    selectedIndex <- as.integer(input$selected_history_session)
+    chatData$current <- chatData$sessions[[selectedIndex]]
+    removeModal()
+  })
+
+  observeEvent(input$generate_rmd, {
+    activeDocContext <- tryCatch(
+      expr = rstudioapi::getActiveDocumentContext(),
+      error = function(e) {
+        showNotification("Failed to retrieve active document context.", type = "error", duration = 5)
+        return(NULL)
+      }
+    )
+    if (is.null(activeDocContext))
+      return()
+    if (!nzchar(activeDocContext$path)) {
+      showNotification("Please save the active document before generating RMarkdown.", type = "error", duration = 5)
+      return()
+    }
+    activeDoc <- tryCatch(
+      expr = {
+        content <- activeDocContext$contents
+        paste(content, collapse = "\n")
+      },
+      error = function(e) {
+        showNotification("Failed to access document contents.", type = "error", duration = 5)
+        return(NULL)
+      }
+    )
+    if (is.null(activeDoc))
+      return()
+    maxChars <- 20000
+    if (nchar(activeDoc) > maxChars) {
+      activeDoc <- paste0(substr(activeDoc, 1, maxChars), "\n...\n(Content truncated)")
+    }
+    prompt_rmd <- paste(
+      "You are an expert in RStudio and RMarkdown. This is an R script; I need to generate a well-defined RMarkdown document where the code is well formatted. Please add a description for each significant part and choose wisely how to split the code, keeping the context in mind.",
+      activeDoc,
+      sep = "\n"
+    )
+    selected_model <- if (file.exists("selected_model.txt")) {
+      readLines("selected_model.txt", warn = FALSE)
+    } else {
+      "llama3-8b-8192"
+    }
+    rmd_response <- tryCatch(
+      {
+        api_key <- tryCatch(keyring::key_get(service = paste0("Snakemaker_", selected_model), username = Sys.info()[["user"]]), error = function(e) "")
+        url <- if (selected_model == "nvidia/llama-3.1-nemotron-70b-instruct") {
+          "https://integrate.api.nvidia.com/v1/chat/completions"
+        } else {
+          "https://api.groq.com/openai/v1/chat/completions"
+        }
+        body <- list(
+          model = selected_model,
+          messages = list(list(role = "user", content = prompt_rmd))
+        )
+        resp <- httr::POST(
+          url,
+          httr::add_headers(`Content-Type` = "application/json", Authorization = paste("Bearer", api_key)),
+          encode = "json",
+          body = body
+        )
+        parsed <- jsonlite::fromJSON(httr::content(resp, as = "text"), simplifyVector = FALSE)
+        if (!is.null(parsed$error)) stop(parsed$error$message)
+        parsed$choices[[1]]$message$content
+      },
+      error = function(e) {
+        showNotification(paste("Error generating RMarkdown:", e$message), type = "error", duration = 5)
+        return(NULL)
+      }
+    )
+    # Optionally: showModal(modalDialog(title="Generated RMarkdown", rmd_response, easyClose=TRUE))
+  })
+
+  # Header Chat/Back button logic
+  output$header_chat_or_back_btn <- renderUI({
+    if (isTRUE(show_chat())) {
+      div(
+        style = "margin-left: auto; display: flex; align-items: center; gap: 10px;",
+        actionButton("close_chat", label = tagList(icon("arrow-left"), "Back"), class = "btn btn-secondary")
+      )
+    } else {
+      div(
+        style = "margin-left: auto; display: flex; align-items: center; gap: 10px;",
+        actionButton("open_chat", label = tagList(icon("comments"), "Chat"), class = "btn btn-secondary")
+      )
+    }
+  })
+
+  output$main_or_chat_ui <- renderUI({
+    if (isTRUE(show_chat())) {
+      create_chat_ui()
+    } else {
+      # ...existing main UI code...
+      fluidPage(
+        div(class = "radio-buttons",
+            radioButtons("menu_choice", "Choose Menu:",
+                         choices = c("R History" = "history", "Terminal history" = "term_history"))
+        ),
+        div(class = "select-input",
+            conditionalPanel(
+              condition = "input.menu_choice == 'history'",
+              tagList(
+                selectInput("selected_line", "Select a line:",
+                            choices = character(0),
+                            selectize = FALSE,
+                            multiple = TRUE,
+                            size = 5,
+                            width = "100%")
+              )
+            ),
+            conditionalPanel(
+              condition = "input.menu_choice == 'term_history'",
+              tagList(
+                selectInput("selected_term", "Select a line:",
+                            choices = character(0),
+                            selectize = FALSE,
+                            size = 5,
+                            width = "100%")
+              )
+            )
+        ),
+        # Importance button now inline with other action buttons
+        div(class = "action-buttons",
+            actionButton("insert", span(icon("file-import"), " Generate rule"), class = "btn btn-primary"),
+            actionButton("refresh", span(icon("sync"), " Update History"), class = "btn btn-warning"),
+            actionButton("toggle_importance_btn", NULL, icon = icon("star"), class = "btn btn-secondary btn-sm", style = "height:32px; width:32px;", title = "Toggle Importance")
+        ),
+        hr(),
+        h4("Archived Rules"),
+        div(class = "archived-rules",
+            selectInput("archived_rules_select", "Select an archived rule:",
+                        choices = character(0),
+                        selectize = FALSE,
+                        size = 5,
+                        width = "100%"),
+            actionButton("parse_again", span(icon("redo"), " Parse Again"), class = "btn btn-success")
+        )
+      )
+    }
+  })
+
 }
 
 shinyApp(

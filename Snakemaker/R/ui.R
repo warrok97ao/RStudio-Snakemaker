@@ -1,3 +1,161 @@
+create_chat_ui <- function() {
+  fluidPage(
+    tags$head(
+      tags$style(HTML("
+        body, .container-fluid {
+          font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+          background: #f8f9fb;
+        }
+        .chat-panel {
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+          padding: 24px 24px 12px 24px;
+          margin: 24px auto 0 auto;
+          max-width: 700px;
+        }
+        .chat-footer {
+          background: #fff;
+          border-radius: 18px 18px 0 0;
+          box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+          padding: 18px 24px 18px 24px;
+          max-width: 700px;
+          margin: 0 auto;
+        }
+        .chat-btn-row {
+          margin-top: 8px;
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        }
+        .chat-btn-row .btn {
+          border-radius: 10px;
+          box-shadow: none;
+          font-weight: 500;
+          border: none;
+          opacity: 0.97;
+          transition: box-shadow 0.2s, opacity 0.2s;
+        }
+        .chat-btn-row .btn:hover {
+          opacity: 1;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .chat-btn-row .btn:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px #b3d4fc;
+        }
+        .chat-message {
+          display: inline-block;
+          max-width: 100%;
+          padding: 12px 18px;
+          margin-bottom: 6px;
+          border-radius: 14px;
+          word-break: break-word;
+          font-size: 1.08em;
+        }
+        .chat-message.user {
+          background: #dbeafe;
+          align-self: flex-end;
+        }
+        .chat-message.llm {
+          background: #f3f4f6;
+          align-self: flex-start;
+        }
+        .chat-input-area textarea {
+          border-radius: 10px;
+          border: 1px solid #e3e7ef;
+          padding: 10px;
+          font-size: 1.08em;
+          background: #f8f9fb;
+          box-shadow: none;
+        }
+        .chat-input-area textarea:focus {
+          border-color: #b3d4fc;
+          outline: none;
+        }
+        .chat-send-btn {
+          border-radius: 10px;
+          background: #2563eb;
+          color: #fff;
+          border: none;
+          width: 100%;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+        .chat-send-btn:hover {
+          background: #1d4ed8;
+        }
+      ")),
+      tags$script(HTML("
+        Shiny.addCustomMessageHandler('updateButtonStyle', function(message) {
+          var btn = document.getElementById(message.buttonId);
+          if(btn){
+            btn.style.cssText += message.style;
+          }
+        });
+        $(document).on('input', 'textarea', function () {
+          var maxHeight = 150;
+          this.style.height = 'auto';
+          this.style.height = Math.min(this.scrollHeight, maxHeight) + 'px';
+        });
+      "))
+    ),
+    tags$div(
+      class = "chat-panel",
+      style = 'padding-bottom: 200px;',
+      uiOutput('chat_output')
+    ),
+    tags$div(
+      class = "chat-footer",
+      style = 'position: fixed; bottom: 0; left: 0; right: 0; border-top: none; box-shadow: 0 -2px 12px rgba(0,0,0,0.04);',
+      fluidRow(
+        class = "chat-input-area",
+        column(8,
+               textAreaInput("user_message", NULL, "", width = "100%", rows = 1,
+                             resize = "vertical",
+                             placeholder = "Type your message here...")
+        ),
+        column(4,
+               actionButton("send", "Send", class = "chat-send-btn", style = "margin-top: 1px; width:100%;")
+        )
+      ),
+      div(
+        class = "chat-btn-row",
+        div(
+          style = "width:10%;",
+          actionButton("new_chat", label = NULL, icon = icon("plus-circle"),
+                       class = "btn btn-success btn-sm", style = "width:100%;",
+                       title = "Start a new Chat")
+        ),
+        div(
+          style = "width:10%;",
+          actionButton("show_history", label = NULL, icon = icon("history"),
+                       class = "btn btn-warning btn-sm", style = "width:100%;",
+                       title = "Chat History")
+        ),
+        div(
+          style = "width:10%;",
+          actionButton("show_doc", label = NULL, icon = icon("file-code"),
+                       class = "btn btn-secondary btn-sm", style = "width:100%;",
+                       title = "Use active document as context")
+        ),
+        div(
+          style = "width:10%;",
+          actionButton("open_settings", label = NULL, icon = icon("cog"),
+                       class = "btn btn-info btn-sm", style = "width:100%;",
+                       title = "Settings")
+        ),
+        div(
+          style = "width:10%;",
+          actionButton("generate_rmd", label = NULL, icon = icon("file-alt"),
+                       class = "btn btn-primary btn-sm", style = "width:100%;",
+                       title = "Generate RMarkdown")
+        )
+      )
+    )
+  )
+}
+
 create_ui = function(history, term_history, archived_rules, selected_model) {
   fluidPage(
     tags$head(
@@ -152,14 +310,14 @@ create_ui = function(history, term_history, archived_rules, selected_model) {
         }
         /* Make select options wrap text and break long words in dark mode */
         body.dark-mode .select-input option,
-        body.dark-mode .archived-rules option {
+        body-dark-mode .archived-rules option {
           white-space: normal !important;
           word-break: break-all;
         }
       ")),
       tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css?family=Inter:400,500,600&display=swap"),
       tags$script(HTML("
-        $(document).on('click', '#toggle_theme', function() {
+        $(document).on('click', '#toggle_theme_settings', function() {
           $('body').toggleClass('dark-mode');
           var btn = $(this);
           if ($('body').hasClass('dark-mode')) {
@@ -172,66 +330,18 @@ create_ui = function(history, term_history, archived_rules, selected_model) {
     ),
     div(
       id = "header",
-      actionButton("open_settings", label = "", icon = icon("cog"), class = "btn btn-info"),
-      div(id = "title", "Snakemaker"),
-      actionButton("toggle_theme", span(icon("moon"), " Dark Mode"), class = "btn btn-secondary")
+      div(
+        style = "display: flex; align-items: center; gap: 10px;",
+        actionButton("open_settings", label = "", icon = icon("cog"), class = "btn btn-info"),
+        div(id = "title", "Snakemaker")
+      ),
+      # Show "Chat" button when in Snakemaker, "Back" when in Chat
+      uiOutput("header_chat_or_back_btn")
     ),
     div(
       id = "main-content",
-      fluidPage(
-        div(class = "radio-buttons",
-            radioButtons("menu_choice", "Choose Menu:",
-                         choices = c("R History" = "history", "Terminal history" = "term_history"))
-        ),
-        div(class = "select-input",
-            conditionalPanel(
-              condition = "input.menu_choice == 'history'",
-              tagList(
-                selectInput("selected_line", "Select a line:",
-                            choices = history,
-                            selectize = FALSE,
-                            multiple = TRUE,
-                            size = 5,
-                            width = "100%"),
-                # Make the button small and inline with others
-                div(
-                  style = "display: flex; gap: 10px; margin-bottom: 8px;",
-                  actionButton("toggle_importance_btn", NULL, icon = icon("star"), class = "btn btn-secondary btn-sm", style = "height:32px; width:32px;", title = "Toggle Importance")
-                )
-              )
-            ),
-            conditionalPanel(
-              condition = "input.menu_choice == 'term_history'",
-              tagList(
-                selectInput("selected_term", "Select a line:",
-                            choices = term_history,
-                            selectize = FALSE,
-                            size = 5,
-                            width = "100%"),
-                div(
-                  style = "display: flex; gap: 10px; margin-bottom: 8px;",
-                  actionButton("toggle_importance_btn", NULL, icon = icon("star"), class = "btn btn-secondary btn-sm", style = "height:32px; width:32px;", title = "Toggle Importance")
-                )
-              )
-            )
-        ),
-        div(class = "action-buttons",
-            actionButton("insert", span(icon("file-import"), " Generate rule"), class = "btn btn-primary"),
-            actionButton("refresh", span(icon("sync"), " Update History"), class = "btn btn-warning"),
-            actionButton("close", span(icon("times"), " Close"), class = "btn btn-danger")
-        ),
-        hr(),
-        h4("Archived Rules"),
-        div(class = "archived-rules",
-            # The choices for archived_rules_select will be updated from the server with symbols
-            selectInput("archived_rules_select", "Select an archived rule:",
-                        choices = archived_rules,
-                        selectize = FALSE,
-                        size = 5,
-                        width = "100%"),
-            actionButton("parse_again", span(icon("redo"), " Parse Again"), class = "btn btn-success")
-        )
-      )
+      # Show chat panel or main UI based on input$show_chat
+      uiOutput("main_or_chat_ui")
     )
   )
 }
