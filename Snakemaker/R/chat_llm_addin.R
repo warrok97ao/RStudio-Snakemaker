@@ -42,8 +42,97 @@ generate_chat <- function(input_text, model) {
 #'
 #' @export
 chat_llm_addin <- function() {
+  # Suppress shiny's missing context error (optional, for smoother startup)
+  options(shiny.suppressMissingContextError = TRUE)
+
   ui <- fluidPage(
     tags$head(
+      tags$style(HTML("
+        body, .container-fluid {
+          font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+          background: #f8f9fb;
+        }
+        .chat-panel {
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+          padding: 24px 24px 12px 24px;
+          margin: 24px auto 0 auto;
+          max-width: 700px;
+        }
+        .chat-footer {
+          background: #fff;
+          border-radius: 18px 18px 0 0;
+          box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+          padding: 18px 24px 18px 24px;
+          max-width: 700px;
+          margin: 0 auto;
+        }
+        .chat-btn-row {
+          margin-top: 8px;
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        }
+        /* Only minimal override for .btn, so Bootstrap color classes are visible */
+        .chat-btn-row .btn {
+          border-radius: 10px;
+          box-shadow: none;
+          font-weight: 500;
+          border: none;
+          opacity: 0.97;
+          transition: box-shadow 0.2s, opacity 0.2s;
+        }
+        .chat-btn-row .btn:hover {
+          opacity: 1;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .chat-btn-row .btn:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px #b3d4fc;
+        }
+        .chat-message {
+          display: inline-block;
+          max-width: 100%;
+          padding: 12px 18px;
+          margin-bottom: 6px;
+          border-radius: 14px;
+          word-break: break-word;
+          font-size: 1.08em;
+        }
+        .chat-message.user {
+          background: #dbeafe;
+          align-self: flex-end;
+        }
+        .chat-message.llm {
+          background: #f3f4f6;
+          align-self: flex-start;
+        }
+        .chat-input-area textarea {
+          border-radius: 10px;
+          border: 1px solid #e3e7ef;
+          padding: 10px;
+          font-size: 1.08em;
+          background: #f8f9fb;
+          box-shadow: none;
+        }
+        .chat-input-area textarea:focus {
+          border-color: #b3d4fc;
+          outline: none;
+        }
+        .chat-send-btn {
+          border-radius: 10px;
+          background: #2563eb;
+          color: #fff;
+          border: none;
+          width: 100%;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+        .chat-send-btn:hover {
+          background: #1d4ed8;
+        }
+      ")),
       tags$script(HTML("
         Shiny.addCustomMessageHandler('updateButtonStyle', function(message) {
           var btn = document.getElementById(message.buttonId);
@@ -59,49 +148,57 @@ chat_llm_addin <- function() {
       "))
     ),
     tags$div(
+      class = "chat-panel",
       style = 'padding-bottom: 200px;',  # ensure chat output not overlapped
       uiOutput('chat_output')
     ),
     tags$div(
-      style = 'position: fixed; bottom: 0; left: 0; right: 0; background: #f0f0f0; padding: 10px; border-top: 1px solid #ccc;',
+      class = "chat-footer",
+      style = 'position: fixed; bottom: 0; left: 0; right: 0; border-top: none; box-shadow: 0 -2px 12px rgba(0,0,0,0.04);',
       # First row: message input and send button
       fluidRow(
+        class = "chat-input-area",
         column(8,
-               textAreaInput("user_message", "Message:", "", width = "100%", rows = 1,
+               textAreaInput("user_message", NULL, "", width = "100%", rows = 1,
                              resize = "vertical",
                              placeholder = "Type your message here...")
         ),
         column(4,
-               actionButton("send", "Send", style = "margin-top: 1px; width:100%;")
+               actionButton("send", "Send", class = "chat-send-btn", style = "margin-top: 1px; width:100%;")
         )
       ),
       # Second row: history, new chat, active document, and settings buttons (each ~10% width)
       div(
-        style = "margin-top: 5px; display: flex; justify-content: center; gap: 10px;",
+        class = "chat-btn-row",
         div(
           style = "width:10%;",
-          actionButton("new_chat", label = "", icon = icon("plus-circle"),
-                       class = "btn btn-success btn-sm", style = "width:100%;")
+          actionButton("new_chat", label = NULL, icon = icon("plus-circle"),
+                       class = "btn btn-success btn-sm", style = "width:100%;",
+                       title = "Start a new Chat")
         ),
         div(
           style = "width:10%;",
-          actionButton("show_history", label = "", icon = icon("history"),
-                       class = "btn btn-warning btn-sm", style = "width:100%;")
+          actionButton("show_history", label = NULL, icon = icon("history"),
+                       class = "btn btn-warning btn-sm", style = "width:100%;",
+                       title = "Chat History")
         ),
         div(
           style = "width:10%;",
-          actionButton("show_doc", label = "", icon = icon("file-code"),
-                       class = "btn btn-secondary btn-sm", style = "width:100%;")
+          actionButton("show_doc", label = NULL, icon = icon("file-code"),
+                       class = "btn btn-secondary btn-sm", style = "width:100%;",
+                       title = "Use active document as context")
         ),
         div(
           style = "width:10%;",
-          actionButton("open_settings", label = "", icon = icon("cog"),
-                       class = "btn btn-info btn-sm", style = "width:100%;")
+          actionButton("open_settings", label = NULL, icon = icon("cog"),
+                       class = "btn btn-info btn-sm", style = "width:100%;",
+                       title = "Settings")
         ),
         div(
           style = "width:10%;",
-          actionButton("generate_rmd", label = "", icon = icon("file-alt"),
-                       class = "btn btn-primary btn-sm", style = "width:100%;")
+          actionButton("generate_rmd", label = NULL, icon = icon("file-alt"),
+                       class = "btn btn-primary btn-sm", style = "width:100%;",
+                       title = "Generate RMarkdown")
         )
       )
     )
@@ -230,15 +327,15 @@ chat_llm_addin <- function() {
         style = "display:flex; flex-direction:column; gap:10px;",
         lapply(chatData$current, function(msg) {
           align <- if (msg$sender == "user") "flex-end" else "flex-start"
-          bg <- if (msg$sender == "user") "#cce5ff" else "#e2e3e5"
+          msg_class <- if (msg$sender == "user") "chat-message user" else "chat-message llm"
           processedText <- if (msg$sender == "llm") {
             HTML(commonmark::markdown_html(enc2utf8(as.character(msg$text))))
           } else {
             msg$text
           }
           tags$div(
-            style = paste("display:inline-block; max-width:100%; padding:8px; background-color:", bg,
-                          "; border-radius:10px; align-self:", align, "; word-wrap: break-word;"),
+            class = msg_class,
+            style = paste("align-self:", align, ";"),
             processedText
           )
         })
@@ -382,17 +479,16 @@ chat_llm_addin <- function() {
   }  # Close server
 
   app <- shinyApp(ui, server)
-  # Run the app in background on port 8081
-  bg_process <- callr::r_bg(function(app, port) {
-    shiny::runApp(app, port = port)
-  }, args = list(app = app, port = 8081))
-  
-  Sys.sleep(1)  # wait briefly for the app to launch
-  viewer <- getOption("viewer")
-  url <- "http://localhost:8081"
-  if (!is.null(viewer)) {
-    viewer(url)
-  } else {
-    message("Shiny app is running at ", url)
-  }
+  # Suppress all messages and warnings from shiny::runApp
+  suppressMessages(suppressWarnings(
+    shiny::runApp(app, port = 8081, launch.browser = getOption("viewer", NULL))
+  ))
+  # Optionally, if you want to open in RStudio viewer or browser:
+  # url <- "http://localhost:8081"
+  # viewer <- getOption("viewer")
+  # if (!is.null(viewer)) {
+  #   viewer(url)
+  # } else {
+  #   utils::browseURL(url)
+  # }
 }
